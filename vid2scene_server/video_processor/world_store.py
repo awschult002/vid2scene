@@ -62,19 +62,7 @@ def resolve_mode(requested: Optional[str], world_dir: Path) -> str:
     return "integrate" if world_has_model(world_dir) else "bootstrap"
 
 
-def _iter_storage_prefix(prefix: str) -> Iterable[str]:
-    try:
-        directories, files = default_storage.listdir(prefix)
-    except Exception:
-        return
-    for name in files:
-        yield f"{prefix.rstrip('/')}/{name}"
-    for directory in directories:
-        yield from _iter_storage_prefix(f"{prefix.rstrip('/')}/{directory}")
-
-
 def pull_world_from_storage(world_id: str, world_dir: Path) -> int:
-    """Download worlds/{world_id}/... into the local world dir if missing locally."""
     prefix = f"worlds/{world_id}"
     pulled = 0
     for rel in WORLD_RELATIVE_FILES:
@@ -96,7 +84,6 @@ def pull_world_from_storage(world_id: str, world_dir: Path) -> int:
 
 
 def push_world_to_storage(world_id: str, world_dir: Path) -> int:
-    """Upload sparse + index files so the next worker can pull them."""
     prefix = f"worlds/{world_id}"
     pushed = 0
     for rel in WORLD_RELATIVE_FILES:
@@ -114,3 +101,35 @@ def push_world_to_storage(world_id: str, world_dir: Path) -> int:
         except Exception:
             logger.exception("Failed to push %s", storage_name)
     return pushed
+
+
+def apply_job_world_env(spj) -> Optional[Path]:
+    """Set V2S_WORLD_* so generate_sfm_hloc.run_sfm sees this job's world.
+
+    Isolated jobs (no world_id) clear the env so leftover state cannot leak.
+    """
+    world_id = getattr(spj, "world_id", None)
+    if not world_id:
+        os.environ.pop("V2S_WORLD_DIR", None)
+        os.environ.pop("V2S_WORLD_MODE", None)
+        os.environ.pop("V2S_CAPTURE_ID", None)
+        return None
+    world_dir = local_world_dir(world_id)
+    pulled = pull_world_from_storage(world_id, world_dir)
+    mode = resolve_mode(getattr(spj, "world_mode", ""), world_dir)
+    capture_id = getattr(spj, "capture_id", None) or str(spj.id)
+    os.environ["V2S_WORLD_DIR"] = str(world_dir)
+    os.environ["V2S_WORLD_MODE"] = mode
+    os.environ["V2S_CAPTURE_ID"] = str(capture_id)
+    logger.info(
+        "World hook world_id=%s mode=%s dir=%s pulled=%s capture=%s",
+        world_id, mode, world_dir, pulled, capture_id,
+    )
+    return world_dir
+
+
+def persist_job_world(spj, world_dir: Optional[Path]) -> None:
+    if not getattr(spj, "world_id", None) or world_dir is None:
+        return
+    pushed = push_world_to_storage(spj.world_id, Path(world_dir))
+    logger.info("Persisted world %s (%s files)", spj.world_id, pushed)
