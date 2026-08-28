@@ -167,6 +167,34 @@ class SceneProcessingJob(models.Model):
                     MaxValueValidator(1000.0, "Tag size must be at most 1000mm")]
     )
 
+    world_id = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        verbose_name="World ID",
+        help_text="Persistent world this capture belongs to. Empty = isolated stock scene.",
+    )
+    WORLD_MODE_CHOICES = [
+        ("", "auto"),
+        ("bootstrap", "bootstrap"),
+        ("integrate", "integrate"),
+    ]
+    world_mode = models.CharField(
+        max_length=16,
+        choices=WORLD_MODE_CHOICES,
+        default="",
+        blank=True,
+        verbose_name="World mode",
+        help_text="bootstrap seeds an empty world. integrate registers into an existing world. blank = auto.",
+    )
+    capture_id = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        verbose_name="Capture ID",
+        help_text="Optional capture id inside the world. Defaults to the job UUID.",
+    )
+
     def __str__(self):
         return f"Processing Job {self.id}: {self.title}"
 
