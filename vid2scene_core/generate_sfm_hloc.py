@@ -3,6 +3,7 @@ from pathlib import Path
 import shutil
 import argparse
 import logging
+import os
 from typing import Any, Dict, Optional
 import pycolmap
 import torch
@@ -28,7 +29,6 @@ except ImportError:
 
 
 def custom_estimation_and_geometric_verification(database_path: Path, pairs_path: Path, verbose: bool = False):
-    # launch colmap verification using colmap subprocess. This is because pycolmap doesn't support GPU for verify_geometry.
     run_command(["colmap", "matches_importer",
                  "--database_path", str(database_path),
                  "--match_list_path", str(pairs_path),
@@ -45,7 +45,6 @@ def custom_import_images(
     image_list: Optional[list] = None,
     options: Optional[Dict[str, Any]] = None,
 ):
-    """Custom import_images function that properly converts arguments for pycolmap."""
     logger.info("Importing images into the database...")
     if options is None:
         options = {}
@@ -157,8 +156,16 @@ def run_sfm(
     mode="bootstrap": stock Vid2Scene (EigenPlaces pairs + GLOMAP/COLMAP).
     mode="integrate": also retrieve against the world MegaLoc index and register
     new images into world_dir/sparse when that model exists.
+
+    The worker may set V2S_WORLD_DIR / V2S_WORLD_MODE instead of passing kwargs.
     """
-    logger.info("Running HLOC SfM pipeline mode=%s method=%s", mode, reconstruction_method)
+    if world_dir is None:
+        world_dir = os.environ.get("V2S_WORLD_DIR") or None
+    env_mode = os.environ.get("V2S_WORLD_MODE")
+    if env_mode in ("bootstrap", "integrate"):
+        mode = env_mode
+
+    logger.info("Running HLOC SfM pipeline mode=%s method=%s world_dir=%s", mode, reconstruction_method, world_dir)
     output_dir = Path(output_dir)
     image_dir = Path(image_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -260,18 +267,12 @@ def run_sfm(
         world_sparse_parent = world_root / "sparse"
         world_sparse_parent.mkdir(parents=True, exist_ok=True)
         produced = sparse_dir / "0"
-        if produced.exists() and mode == "bootstrap":
+        if produced.exists() and mode in ("bootstrap", "integrate"):
             dest = world_sparse_parent / "0"
             if dest.exists():
                 shutil.rmtree(dest)
             shutil.copytree(produced, dest)
-            logger.info("Wrote bootstrap world model to %s", dest)
-        elif produced.exists() and mode == "integrate":
-            dest = world_sparse_parent / "0"
-            if dest.exists():
-                shutil.rmtree(dest)
-            shutil.copytree(produced, dest)
-            logger.info("Updated world model from integrate at %s", dest)
+            logger.info("Wrote world model (%s) to %s", mode, dest)
 
     with torch.no_grad():
         torch.cuda.empty_cache()
