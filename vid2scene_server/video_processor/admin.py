@@ -49,18 +49,15 @@ def make_requeue_action(queue_name):
             
             queue = django_rq.get_queue(actual_queue_name)
             
-            # Pre-create the Job object (generates physical ID without enqueuing)
             job = Job.create(
-                func="video_processor.tasks.process_video_task",
+                func="video_processor.world_task.process_video_task",
                 args=(spj.id,),
                 connection=queue.connection
             )
             
-            # Link the new ID
             spj.rq_job_id = job.id
             spj.save(update_fields=['rq_job_id'])
             
-            # Enqueue to Redis
             queue.enqueue_job(job)
             count += 1
             
@@ -85,9 +82,9 @@ def make_requeue_action(queue_name):
 @admin.register(SceneProcessingJob)
 class SceneProcessingJobAdmin(admin.ModelAdmin):
     form = SceneProcessingJobAdminForm
-    list_display = ('title', 'user', 'reconstruction_method', 'example', 'allow_as_example', 'view_link', 'uploaded_at', 'rq_job_id', 'ply_file', 'lod_file')
-    list_filter = ('reconstruction_method', 'example', 'uploaded_at', 'user')
-    search_fields = ('title', 'user__username', 'id')
+    list_display = ('title', 'user', 'world_id', 'world_mode', 'reconstruction_method', 'example', 'allow_as_example', 'view_link', 'uploaded_at', 'rq_job_id', 'ply_file', 'lod_file')
+    list_filter = ('reconstruction_method', 'world_mode', 'example', 'uploaded_at', 'user')
+    search_fields = ('title', 'user__username', 'id', 'world_id', 'capture_id')
     actions = ['make_example', 'remove_example', 'requeue_automatic', 'requeue_default', 'requeue_high', 'requeue_internal', 'requeue_enterprise']
 
     def make_example(self, request, queryset):
