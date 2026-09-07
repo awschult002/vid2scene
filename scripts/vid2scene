@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Local launcher: ./scripts/vid2scene /path/to/video.mp4 -o /path/to/outdir
+# Sets PYTHONPATH to the repo root and runs python -m vid2scene_core.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+export PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
+
+# Prefer the active python; fall back to python3.
+if command -v python >/dev/null 2>&1; then
+  PY=python
+elif command -v python3 >/dev/null 2>&1; then
+  PY=python3
+else
+  echo "error: python not found on PATH" >&2
+  exit 127
+fi
+
+exec "${PY}" -m vid2scene_core "$@"
